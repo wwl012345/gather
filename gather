@@ -1,0 +1,544 @@
+#!/bin/bash
+
+# export path
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/root/bin:/bin:/sbin/:$PATH
+# create result dir
+RESULT_DIR=/tmp/report
+mkdir -p ${RESULT_DIR}
+RESULT_FILE=${RESULT_DIR}/result.txt
+RESULT_TREE=${RESULT_DIR}/tree.txt
+RESULT_KEY=${RESULT_DIR}/keyword.txt
+
+if [ -f "$RESULT_FILE" ]; then
+rm -rf ${RESULT_FILE}
+fi
+
+if [ -f "$RESULT_TREE" ]; then
+rm -rf ${RESULT_TREE}
+fi
+
+# cat system version
+SYS_VER=`cat /proc/version`
+sys_debian="Debian"
+SSH_DIR=~/.ssh/
+CON_DIR=/var/spool/cron/crontabs/
+showip=`ip route show | grep -n 'eth0\s*proto\s*kernel\s*scope\s*link\s*src' | sed 's/^.*src //g' | sed s/metric.*$//g`
+userinfo=`for i in $(cut -d":" -f1 /etc/passwd 2>/dev/null);do id $i;done 2>/dev/null`
+
+# sensitive data
+a_dir=("/etc/" "/opt/" "/var/" "/home/" "/root/" "/usr/")
+# a_file=("redis.conf" "mongodb.conf" "server.xml" "vsftpd.conf" "ldap.conf" "nginx.conf" "apache2.conf" "smb.conf")
+
+# banner
+echo -e "\033[36m -------------------------------------------------------- \033[0m"
+echo -e "\033[31m     ██████╗  █████╗ ████████╗██╗  ██╗███████╗██████╗     \033[0m"
+echo -e "\033[31m    ██╔════╝ ██╔══██╗╚══██╔══╝██║  ██║██╔════╝██╔══██╗    \033[0m"
+echo -e "\033[31m    ██║  ███╗███████║   ██║   ███████║█████╗  ██████╔╝    \033[0m"
+echo -e "\033[31m    ██║   ██║██╔══██║   ██║   ██╔══██║██╔══╝  ██╔══██╗    \033[0m"
+echo -e "\033[31m    ╚██████╔╝██║  ██║   ██║   ██║  ██║███████╗██║  ██║    \033[0m"
+echo -e "\033[31m     ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝    \033[0m"
+echo -e "\033[36m -------------------------------------------------------- \033[0m"
+echo 
+echo -e "\033[31m   Linux Server Probe Script     \033[0m"
+echo -e "\033[31m   Hostname:\033[0m \033[32m`hostname` \033[0m"
+echo -e "\033[31m   Kernel:\033[0m \033[32m`uname -m` \033[0m"
+echo -e "\033[31m   User:\033[0m \033[32m`whoami` \033[0m"
+echo -e "\033[31m   IP:\033[0m \033[32m${showip}  \033[0m"
+echo -e "\033[31m   Report:\033[0m \033[32m/tmp/report \033[0m"
+echo -e "\033[31m   Help:\033[0m \033[32muse -h   \033[0m"
+echo -e "\033[36m ------------------------------- \033[0m"
+
+#usage
+usage() { echo " Usage: $0 [-s] [-a] [-t] [-k>]" 1>&2; exit 1; }
+
+# check system
+funsys()
+{
+os=`uname -o`
+os_re=`uname -n`
+os_ke=`uname -rv`
+ver=$(echo $SYS_VER | grep "${sys_debian}")
+if [[ "$ver" != "" ]]
+then
+	echo -e " OS: \033[32m${os} ${os_re}\033[0m"
+	echo -e " Kernel: \033[32m${os_ke}\033[0m"
+	echo -e "\033[36m ------------------------------- \033[0m"
+	echo -e "\033[31m Gather Start at \033[0m`date`"
+	echo -e "\033[36m ------------------------------- \033[0m"
+else
+	echo -e " OS: \033[32m${os} ${os_re}\033[0m"
+	echo -e " Kernel: \033[32m${os_ke}\033[0m"
+	echo -e "\033[36m ------------------------------- \033[0m"
+	echo -e "\033[31m Gather Start at `date`... \033[0m"
+	echo -e "\033[36m ------------------------------- \033[0m"
+fi
+}
+
+# dir struct
+funtree()
+{
+	if command -v tree > /dev/null 2>&1; then
+			for i in ${a_dir[@]}
+			do
+				echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_TREE
+				echo -e "\033[32m${i}\033[0m" >> $RESULT_TREE
+				echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_TREE
+				tree ${i} >> $RESULT_TREE 2>&1
+			done
+			if [[ $? -eq 0 ]]
+			then
+				echo >> $RESULT_FILE
+				echo -e "\033[31m Gather\033[0m directory structure info ...... \033[32mOK\033[0m"
+			else
+				echo -e "\033[31m Gather\033[0m directory structure info ...... \033[31mFAILED\033[0m"
+			fi
+	else
+		for s in ${a_dir[@]}
+		do
+			echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_TREE
+			echo -e "\033[32m${s}\033[0m" >> $RESULT_TREE
+			echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_TREE
+			ls -R -t -s -a ${s} >> tree.txt 2>&1
+		done
+		if [[ $? -eq 0 ]]
+		then
+			echo >> $RESULT_FILE
+			echo -e "\033[31m Gather\033[0m directory structure info ...... \033[32mOK\033[0m"
+		else
+			echo -e "\033[31m Gather\033[0m directory structure info ...... \033[31mFAILED\033[0m"
+		fi
+	fi
+}
+
+# find key
+funkey()
+{
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_KEY
+	echo -e "\033[32mFind Keyword Info\033[0m" >> $RESULT_KEY
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_KEY
+	# find the keyword--pass
+	echo -e "\033[32mInclude the keyword--pass Info\033[0m" >> $RESULT_KEY
+	find / -maxdepth 4 -name *.conf -type f -exec grep -Hn pass {} \; >> $RESULT_KEY 2>&1
+	find / -maxdepth 4 -name *.ini -type f -exec grep -Hn pass {} \; >> $RESULT_KEY 2>&1
+	find / -maxdepth 4 -name *.log -type f -exec grep -Hn pass {} \; >> $RESULT_KEY 2>&1
+	# find the keyword--include current user
+	echo -e "\033[32mInclude the keyword--`whoami` Info\033[0m" >> $RESULT_KEY
+	find / -maxdepth 4 -name *.conf -type f -exec grep -Hn `whoami` {} \; >> $RESULT_KEY 2>&1
+  find / -maxdepth 4 -name *.ini -type f -exec grep -Hn `whoami` {} \; >> $RESULT_KEY 2>&1
+  find / -maxdepth 4 -name *.log -type f -exec grep -Hn `whoami` {} \; >> $RESULT_KEY 2>&1
+  # find the keyword--sqlserver
+  echo -e "\033[32mInclude the keyword--sqlserver Info\033[0m" >> $RESULT_KEY
+  find / -maxdepth 4 -name *.conf -type f -exec grep -Hn mssql {} \; >> $RESULT_KEY 2>&1
+  find / -maxdepth 4 -name *.conf -type f -exec grep -Hn sqlserver {} \; >> $RESULT_KEY 2>&1
+  # find the keyword--mysql
+  echo -e "\033[32mInclude the keyword--mysql Info\033[0m" >> $RESULT_KEY
+	find / -maxdepth 4 -name *.my.cnf -type f -exec grep -Hn mysql {} \; >> $RESULT_KEY 2>&1
+	# find files that were modified within 72 hours
+	echo -e "\033[32mwere modified within 72 hours file Info\033[0m" >> $RESULT_KEY
+	find / -name "*.*" -ctime -2 >> $RESULT_KEY 2>&1
+	# find the SUID file with root access
+  echo -e "\033[32mthe SUID file with root access Info\033[0m" >> $RESULT_KEY
+	find / -uid 0 -perm -4000 -type f >> $RESULT_KEY 2>&1
+
+	if [[ $? -eq 0 ]]
+	then
+		echo >> $RESULT_KEY
+		echo -e "\033[31m Gather\033[0m find keyword info ...... \033[32mOK\033[0m"
+	else
+		echo -e "\033[31m Gather\033[0m find keyword info ...... \033[31mFAILED\033[0m"
+	fi
+}
+
+# common mode
+funsip()
+{
+	# release information
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	echo -e "\033[32mRelease Info\033[0m" >> $RESULT_FILE
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	cat /etc/*-release >> $RESULT_FILE 2>&1
+	cat /proc/version >> $RESULT_FILE 2>&1
+	if [[ $? -eq 0 ]]
+	then
+	echo >> $RESULT_FILE
+	echo -e "\033[31m Gather\033[0m release info ...... \033[32mOK\033[0m"
+	else
+	echo -e "\033[31m Gather\033[0m release info ...... \033[31mFAILED\033[0m"
+	fi
+	
+	# ifconfig
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	echo -e "\033[32mIP Address Info\033[0m" >> $RESULT_FILE
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	ip address show >> $RESULT_FILE 2>&1
+	if [[ $? -eq 0 ]]
+	then
+	echo >> $RESULT_FILE
+	echo -e "\033[31m Gather\033[0m ip address info ...... \033[32mOK\033[0m"
+	else
+	echo -e "\033[31m Gather\033[0m ip address info ...... \033[31mFAILED\033[0m"
+	fi
+
+	# arp
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	echo -e "\033[32mArp Info\033[0m" >> $RESULT_FILE
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	arp -v >> $RESULT_FILE 2>&1
+	if [[ $? -eq 0 ]]
+	then
+	echo >> $RESULT_FILE
+	echo -e "\033[31m Gather\033[0m arp info ...... \033[32mOK\033[0m"
+	else
+	echo -e "\033[31m Gather\033[0m arp info ...... \033[31mFAILED\033[0m"
+	fi
+
+	# route
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	echo -e "\033[32mRoute Info\033[0m" >> $RESULT_FILE
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	route -v >> $RESULT_FILE 2>&1
+	if [[ $? -eq 0 ]]
+	then
+	  echo >> $RESULT_FILE
+	  echo -e "\033[31m Gather\033[0m route info ...... \033[32mOK\033[0m"
+	else
+	  echo -e "\033[31m Gather\033[0m route info ...... \033[31mFAILED\033[0m"
+	fi
+	
+	# /etc/passwd
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	echo -e "\033[32mSystem Passwd File Info\033[0m" >> $RESULT_FILE
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	if [ "$userinfo" ]
+	then
+		echo -e "\n$userinfo" >> $RESULT_FILE 2>&1
+	else
+		:
+	fi
+	hashesinpasswd=`grep -v '^[^:]*:[x]' /etc/passwd 2>/dev/null`
+	if [ "$hashesinpasswd" ]
+	then
+		echo -e "\e[00;33mIt looks like we have password hashes in /etc/passwd!\e[00m\n$hashesinpasswd" >> $RESULT_FILE 2>&1
+	else
+		:
+	fi
+	if [[ $? -eq 0 ]]
+	then
+	  echo >> $RESULT_FILE
+	  echo -e "\033[31m Gather\033[0m /etc/passwd ...... \033[32mOK\033[0m"
+	else
+	  echo -e "\033[31m Gather\033[0m /etc/passwd ...... \033[31mFAILED\033[0m"
+	fi
+	
+	# /etc/shadow
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	echo -e "\033[32mSystem Shadow File Info\033[0m" >> $RESULT_FILE
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	cat /etc/shadow >> $RESULT_FILE 2>&1
+	if [[ $? -eq 0 ]]
+	then
+	  echo >> $RESULT_FILE
+	  echo -e "\033[31m Gather\033[0m /etc/shadow ...... \033[32mOK\033[0m"
+	else
+	  echo -e "\033[31m Gather\033[0m /etc/shadow ...... \033[31mFAILED\033[0m"
+	fi
+	
+	# /etc/sudoers
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	echo -e "\033[32mSystem Sudoers File Info\033[0m" >> $RESULT_FILE
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	cat /etc/sudoers 2>/dev/null | grep -v -e '^$' | grep -v "#" >> $RESULT_FILE 2>&1
+	if [[ $? -eq 0 ]]
+	then
+	  echo >> $RESULT_FILE
+	  echo -e "\033[31m Gather\033[0m /etc/sudoers ...... \033[32mOK\033[0m"
+	else
+	  echo -e "\033[31m Gather\033[0m /etc/sudoers ...... \033[31mFAILED\033[0m"
+	fi
+
+	# compgen
+    	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+    	echo -e "\033[32mUser executable commands File Info\033[0m" >> $RESULT_FILE
+    	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+    	compgen -c >> $RESULT_FILE 2>&1
+    	if [[ $? -eq 0 ]]
+    	then
+    	  echo >> $RESULT_FILE
+    	  echo -e "\033[31m Gather\033[0m User executable commands ...... \033[32mOK\033[0m"
+    	else
+    	  echo -e "\033[31m Gather\033[0m User executable commands ...... \033[31mFAILED\033[0m"
+    	fi
+	
+	# password policy information
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	echo -e "\033[32mPassword policy Info\033[0m" >> $RESULT_FILE
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	cat /etc/login.defs 2>/dev/null | grep -v -e '^$' | grep -v "#" >> $RESULT_FILE 2>&1
+	if [[ $? -eq 0 ]]
+	then
+	  echo >> $RESULT_FILE
+	  echo -e "\033[31m Gather\033[0m /etc/login.defs ...... \033[32mOK\033[0m"
+	else
+	  echo -e "\033[31m Gather\033[0m /etc/login.defs ...... \033[31mFAILED\033[0m"
+	fi
+	
+	# /root
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	echo -e "\033[32mChecks root home directory Info\033[0m" >> $RESULT_FILE
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	ls -ahl /root/ >> $RESULT_FILE 2>&1
+	if [[ $? -eq 0 ]]
+	then
+	  echo >> $RESULT_FILE
+	  echo -e "\033[31m Gather\033[0m root home directory ...... \033[32mOK\033[0m"
+	else
+	  echo -e "\033[31m Gather\033[0m root home directory ...... \033[31mFAILED\033[0m"
+	fi
+	
+	# netstat
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	echo -e "\033[32mNet Status\033[0m" >> $RESULT_FILE
+	echo -e "\033[36m------------------TCP---PORT------------------------\033[0m" >> $RESULT_FILE
+	netstat -antp >> $RESULT_FILE 2>&1
+	echo -e "\033[36m------------------UDP---PORT------------------------\033[0m" >> $RESULT_FILE
+	netstat -anup >> $RESULT_FILE 2>&1
+	if [[ $? -eq 0 ]]
+	then
+	  echo >> $RESULT_FILE
+	  echo -e "\033[31m Gather\033[0m netstat ...... \033[32mOK\033[0m"
+	else
+	  echo -e "\033[31m Gather\033[0m netstat ...... \033[31mFAILED\033[0m"
+	fi
+	
+	# process
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	echo -e "\033[32mProcess Info\033[0m" >> $RESULT_FILE
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	ps aux >> $RESULT_FILE 2>&1
+	if [[ $? -eq 0 ]]
+	then
+	  echo >> $RESULT_FILE
+	  echo -e "\033[31m Gather\033[0m process info ...... \033[32mOK\033[0m"
+	else
+	  echo -e "\033[31m Gather\033[0m process info ...... \033[31mFAILED\033[0m"
+	fi
+	
+	# services
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	echo -e "\033[32mServices Info\033[0m" >> $RESULT_FILE
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	cat /etc/services 2>/dev/null | grep -v "#" >> $RESULT_FILE 2>&1
+	if [[ $? -eq 0 ]]
+	then
+	  echo >> $RESULT_FILE
+	  echo -e "\033[31m Gather\033[0m services info ...... \033[32mOK\033[0m"
+	else
+	  echo -e "\033[31m Gather\033[0m services info ...... \033[31mFAILED\033[0m"
+	fi
+
+	# iptables
+    	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+    	echo -e "\033[32mIptables Info\033[0m" >> $RESULT_FILE
+    	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+    	iptables -nL >> $RESULT_FILE 2>&1
+    	if [[ $? -eq 0 ]]
+    	then
+    	  echo >> $RESULT_FILE
+    	  echo -e "\033[31m Gather\033[0m iptables info ...... \033[32mOK\033[0m"
+    	else
+    	  echo -e "\033[31m Gather\033[0m iptables info ...... \033[31mFAILED\033[0m"
+    	fi
+	
+	# bash env
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	echo -e "\033[32mBash Env\033[0m" >> $RESULT_FILE
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	echo -e "\033[32mcurrent user \033[0m" >> $RESULT_FILE
+	echo -e "\033[36m-----------------------\033[0m" >> $RESULT_FILE
+	envinfo=`env 2>/dev/null | grep -v 'LS_COLORS' 2>/dev/null`
+	if [ "$envinfo" ]
+	then
+		echo -e "\n$envinfo" >> $RESULT_FILE 2>&1
+		echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	else
+		:
+	fi
+	cat ~/.bashrc 2>/dev/null | grep -v -e '^$' | grep -v "#" >> $RESULT_FILE 2>&1
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	echo $PATH >> $RESULT_FILE 2>&1
+	echo -e "\033[36m-----------------------\033[0m" >> $RESULT_FILE
+	echo -e "\033[32msystem env profile \033[0m" >> $RESULT_FILE
+	echo -e "\033[36m-----------------------\033[0m" >> $RESULT_FILE
+	cat /etc/profile 2>/dev/null | grep -v -e '^$' | grep -v "#" >> $RESULT_FILE 2>&1
+	if [[ $? -eq 0 ]]
+	then
+	  echo >> $RESULT_FILE
+	  echo -e "\033[31m Gather\033[0m bash env ...... \033[32mOK\033[0m"
+	else
+	  echo -e "\033[31m Gather\033[0m bash env ...... \033[31mFAILED\033[0m"
+	fi
+	
+	# command history
+	HISTFILE=~/.bash_history
+	export HISTTIMEFORMAT="%Y-%m-%d:%H-%M-%S:"`whoami`": "
+	set -o history
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	echo -e "\033[32mCommand History\033[0m" >> $RESULT_FILE
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	history >> $RESULT_FILE 2>&1
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	cat $HISTFILE >> $RESULT_FILE 2>&1
+	if [[ $? -eq 0 ]]
+	then
+	  echo >> $RESULT_FILE
+	  echo -e "\033[31m Gather\033[0m command history ...... \033[32mOK\033[0m"
+	else
+	  echo -e "\033[31m Gather\033[0m command history ...... \033[31mFAILED\033[0m"
+	fi
+	
+	# user login info
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	echo -e "\033[32mLogin Info\033[0m" >> $RESULT_FILE
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	w >> $RESULT_FILE 2>&1
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	last >> $RESULT_FILE 2>&1
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	lastlog >> $RESULT_FILE 2>&1
+	if [[ $? -eq 0 ]]
+	then
+	  echo >> $RESULT_FILE
+	  echo -e "\033[31m Gather\033[0m login info ...... \033[32mOK\033[0m"
+	else
+	  echo -e "\033[31m Gather\033[0m login info ...... \033[31mFAILED\033[0m"
+	fi
+	
+	# hosts
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	echo -e "\033[32mHosts Info\033[0m" >> $RESULT_FILE
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	find /etc /home -type f \( -name "*.rhosts" -o -name "*.equiv" \) >> $RESULT_FILE 2>&1
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	cat /etc/hosts >> $RESULT_FILE 2>&1
+	if [[ $? -eq 0 ]]
+	then
+	  echo >> $RESULT_FILE
+	  echo -e "\033[31m Gather\033[0m hosts info ...... \033[32mOK\033[0m"
+	else
+	  echo -e "\033[31m Gather\033[0m hosts info ...... \033[31mFAILED\033[0m"
+	fi
+	
+	# fstab
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	echo -e "\033[32mMount Info\033[0m" >> $RESULT_FILE
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	cat /etc/fstab >> $RESULT_FILE 2>&1
+	if [[ $? -eq 0 ]]
+	then
+	  echo >> $RESULT_FILE
+	  echo -e "\033[31m Gather\033[0m /etc/fstab ...... \033[32mOK\033[0m"
+	else
+	  echo -e "\033[31m Gather\033[0m /etc/fstab ...... \033[31mFAILED\033[0m"
+	fi	
+	
+	# ssh authkey config
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	echo -e "\033[32mSSH Auth Key Config\033[0m" >> $RESULT_FILE
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	sshfiles=`find / \( -name "id_dsa*" -o -name "id_rsa*" -o -name "known_hosts" -o -name "authorized_hosts" -o -name "authorized_keys" \) -exec ls -la {} 2>/dev/null \;`
+	if [ "$sshfiles" ]; then
+		echo -e "\e[00;31mSSH keys/host information found in the following locations:\e[00m\n$sshfiles" >> $RESULT_FILE 2>&1
+		echo -e "\n" >> $RESULT_FILE 2>&1
+	else
+		:
+	fi
+	if [ -d "${SSH_DIR}" ]
+	then
+		for i in `ls -1 ${SSH_DIR} >> $RESULT_FILE 2>&1`
+		do
+			cat ${SSH_DIR}${i} >> $RESULT_FILE 2>&1
+		done
+		if [[ $? -eq 0 ]]
+		then
+			echo >> $RESULT_FILE
+			echo -e "\033[31m Gather\033[0m ssh auth key ...... \033[32mOK\033[0m"
+		else
+			echo -e "\033[31m Gather\033[0m ssh auth key ...... \033[31mFAILED\033[0m"
+		fi
+	else
+		echo -e "\033[31m Gather\033[0m ssh auth key ...... \033[31mFAILED\033[0m"
+		echo -e "\033[31m.ssh No such file or directory\033[0m" >> $RESULT_FILE
+	fi
+	
+	# crontab
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	echo -e "\033[32mCrontab Config\033[0m" >> $RESULT_FILE
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	ls -al /etc/cron* >> $RESULT_FILE 2>&1
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	cat /etc/rc.local >> $RESULT_FILE 2>&1
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	cut -d ":" -f 1 /etc/passwd | xargs -n1 crontab -l -u >> $RESULT_FILE 2>&1
+	echo -e "\033[36m----------------------------------------------------\033[0m" >> $RESULT_FILE
+	if [ -d "${CON_DIR}" ]
+	then
+		for i in `ls -1 ${CON_DIR} >> $RESULT_FILE 2>&1`
+		do
+			cat ${CON_DIR}${i} >> $RESULT_FILE 2>&1
+		done
+		if [[ $? -eq 0 ]]
+		then
+			echo >> $RESULT_FILE
+			echo -e "\033[31m Gather\033[0m crontab ...... \033[32mOK\033[0m"
+		else
+			echo -e "\033[31m Gather\033[0m crontab ...... \033[31mFAILED\033[0m"
+		fi
+	else
+		echo -e "\033[31m Gather\033[0m crontab ...... \033[31mFAILED\033[0m"
+		echo -e "\033[31m No such file or directory\033[0m" >> $RESULT_FILE
+	fi
+		
+}
+
+# getopts
+# ./gather -t 10 -s
+while getopts sht:k:a ARGS
+do
+case $ARGS in
+	s)
+		# common mode
+		funsys
+		funsip
+		;;
+	a)
+		# all
+		funsys
+		funsip
+		funtree
+		funkey
+		;;
+	k)
+		# key
+		funsys
+		funkey
+		;;
+	t)
+		# dir struct
+		funsys
+		funtree
+		;;
+	h)
+		# help
+		echo " Common Mode: -s"
+		echo " Full Mode: -a"
+		echo " DirTree Mode: -t"
+		echo " Find Keyword Mode: -k"
+		usage
+		;;
+	*)
+		# param error
+		echo " $1 is not an option"
+		usage
+		;;
+esac
+done
